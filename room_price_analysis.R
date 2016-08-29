@@ -7,17 +7,7 @@
   data_all <- read_html(page)  #взять теги отсюда))))
   tags_lists <- read.table(file.path(getwd(), "room_bn_tags"),  header = TRUE, sep = ";", stringsAsFactors = FALSE)
   
-room_page <- function(data_all){
-  rooms <-  do.call("cbind", 
-                    lapply(tags_lists$css_tag, function(v){
-                      assign(tags_lists$description[which(tags_lists$css_tag == v)], data_all %>% html_nodes(v) %>% html_text()) 
-                    })
-  )
-  
-  colnames(rooms) <- gsub(" ", "", tags_lists[,2])
-  rooms <- as.data.frame(rooms, stringsAsFactors = FALSE)
-  
-  #1. разделяем колонки
+
   split_and_numeric <- function(rooms){
     try <-  apply(rooms, 2,  function(i){
       if ( all(grepl("/", i)  == TRUE) ) {
@@ -28,6 +18,18 @@ room_page <- function(data_all){
     })
   } #end of split and numeric function
   
+  
+room_page <- function(data_all){
+  rooms <-  do.call("cbind", 
+                    lapply(tags_lists$css_tag, function(v){
+                      assign(tags_lists$description[which(tags_lists$css_tag == v)], data_all %>% html_nodes(v) %>% html_text()) 
+                    })
+  )
+  
+  colnames(rooms) <- gsub(" ", "", tags_lists[,2])
+  rooms <- as.data.frame(rooms, stringsAsFactors = FALSE)
+  
+
   results <- do.call("cbind", split_and_numeric(rooms))
   colnames(results) <- c("relevant_level", "total_levels", "total rooms", "neighbors", "total neigbors")
   #подумать об автоматизации комбинации изменных и неизмененных колонок -> 
