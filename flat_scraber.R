@@ -2,92 +2,72 @@ rm(list = ls())
 ###
 library(rvest)
 library(dplyr)
+page <- "http://www.bn.ru/zap_fl.phtml?kkv1=1&kkv2=5&price1=&price2=" 
 
-page <- "http://www.bn.ru/newbuild/photo/search/?region8=8&region31=31&kkv1=&kkv2=&text=" # новостройки московский и ломоносовский район страница 1
-data <- read_html(page) 
+#http://www.bn.ru/zap_bd.phtml?kkv1=0&kkv2=0&price1=&price2  новостройки
+#http://www.bn.ru/zap_fl.phtml?kkv1=2&kkv2=2&price1=&price2=  двухкомнатные
+  
+data_all <- read_html(page)  #взять теги отсюда))))
+tags_lists <- read.table(file.path(getwd(), "flat_bn_tags"), skip = 1, header = TRUE, sep = ";", stringsAsFactors = FALSE)
+#tags_lists <- tags_lists[ -c(3,8), ] #неправильно читаются данные - длина массива по 31 значению
 
-####загрузка со страницы новостроек в районе ####
-price <- html_nodes(data, ".obj_bg tr:nth-child(1) td:nth-child(3) b") 
-cost <- as.numeric(gsub("[^0-9]", "", unlist(price)))
-room_number <- as.numeric(html_text(html_nodes(data, "tr:nth-child(5) strong")))
-adress <- html_text(html_nodes(data, "b a"))[1:length(cost)] # послед
-sailing_type <- html_text(html_nodes(data,".obj_bg td:nth-child(1) strong"))
-building_type <- html_text(html_nodes(data, ".obj_bg tr:nth-child(3) a"))
-###Какие данные со страницы района могут быть полезны?
-# добавить продавца
-#  ???
+pages <- data_all %>% #TBD при таком раскладе пропукаем первую страницу - попробовать подобрать другой тег
+  html_nodes(".sr_pages a") %>%
+  html_attr("href") %>% unique() 
+#%>% append(page)
 
-#собираем ссылки на детальную информацию об объектах
-adress_details <- data %>% 
-  html_nodes("b a") %>%
-  html_attr("href") 
-
-### загрузка детальной информации - с вкладки об объекте ####
-data_session <- html_session(page)
+#[1] "/zap_bd.phtml?kkv1=1&kkv2=2&price1=&price2=&start=50"  "/zap_bd.phtml?kkv1=1&kkv2=2&price1=&price2=&start=100"
+#[3] "/zap_bd.phtml?kkv1=1&kkv2=2&price1=&price2=&start=150" "/zap_bd.phtml?kkv1=1&kkv2=2&price1=&price2=&start=950"
 #
-# readability <- vector(mode = "numeric",length=0)
 
-details_parsing <- function(v) { #парсим инфу с деталями об объекте
+#первый подход меняем ссылки за счет работы с текстом
+
+splited <- strsplit(pages, "=") 
+pages_path <- splited[1]
+pages_path <- unlist (pages_path) 
+pages_path <- pages_path[1:5] %>%  paste(collapse = "=" )
+
+items_per_page <- do.call("cbind", splited) %>% tbl_df() %>% slice(6) %>% as.numeric()
+pages_numbers <- seq(from = items_per_page[1], to = items_per_page[length(items_per_page)], by = items_per_page[2] - items_per_page[1])
  
-  nodes_list <- c("tr:nth-child(8) .str", "tr:nth-child(9) .str", "tr:nth-child(7) .str", "tr:nth-child(10) .str")
-  #меняют структуру сайта??))) две разных структуры node_list. отсюда вырастает задача определения css selection по тексту контента
-  #ждем пока устаканят структуру сайта))
-  x <- v
+relevant_pages <- lapply(pages_numbers, function(io){
+  reslt <- paste(c(pages_path, io), collapse = "=") 
+})
+
+relevant_pages <- do.call("rbind", relevant_pages) %>% as.list()
+
+
+data_session <- html_session(page)
+
+data_collection <- function(data_all){
+  res <- lapply(tags_lists$css_tag, function(v){
+    re <- assign(tags_lists$description[which(tags_lists$css_tag == v)], data_all %>% html_nodes(v) %>% html_text()) 
+    if(any(is.na(re))) {
+      print("smth is wrong during the parsing")
+    }
+    return(re)
+  })
   
-  parced_data <- sapply(nodes_list, function(a) 
-    html_nodes(x, a) %>% html_text()
-  )
+  #names(res) <- tags_lists$description
+  results <- do.call("rbind", res)
+  print( paste("Page parsing had been finished. Amount of parsed data:" ,length(res[[1]])))
+  return(results)
+} #end of data collection function
 
-  if( length(unlist(parced_data)) == 0 ) {
-    #readability <- append(readability, 0, after = length(readability))
-    message ("data could not be parsed")
-  } else {
-  stages <- strsplit(parced_data[3], "/") %>% unlist() %>% as.numeric(as.character())
+page_lister <- lapply(relevant_pages, function(l){
   
-  detiled_info <- data.frame(
-                    "total_square" = as.numeric(as.character(parced_data[1])),
-                    "living_square" = as.numeric(as.character(parced_data[2])),#общая и жилая площадь
-                    "living_level" = stages[1],#этаж расположения
-                    "total_level" = stages[2],  #и общая этажность
-                    "readiness" = parced_data[4], row.names = NULL)
- # readability <- append(readability, 1, after = length(readability))
-  message("detailed information about the building is parsed")
-      # if( exists("detiled_info") ) {
-      #   detiled_info <- rbind(detiled_info, parsed)
-      #   message("data is added to the dataframe")
-      # }else{
-      #   detiled_info <- parsed
-      #   message("dataframe is started")
-      # }
-  return(detiled_info)
-  }
-  #return(list("readability" = readability, "detailed_info"= detiled_info))
-  
-}#end of details_parsing
+  jump_to(data_session, l) %>% data_collection()
+}
+) #end of lapply 
 
+str(page_lister)
+flats <- do.call("cbind", page_lister) %>%  t() %>%
+  as.data.frame( stringsAsFactors = FALSE  ) 
 
-  #предусмотреть защиту от ошибок и освоить функцию TryCatch
+names(flats) <- gsub(" ", "", tags_lists$description)
 
-  building_details_collection <- function ( ){
-    try_list <-  sapply(adress_details, function(v)
-        jump_to(data_session, v) %>% details_parsing()
-        )
-    
-    # на выходе имеем: 
-    # * если даже данных не было - они не опущены (как планировалось): -> лучше оставить нули чтобы была связка с  данными с прошлой вкладки
-    # * датафреймы загнаны в листы: нужно объединить 
-    
-    
-    try_list_two <- unlist(try_list, recursive = FALSE)
-    #из датафреймов уйти в листы и уже работать с ними через unlist
-    return(try_list)
-  } #end of building_details_collection()
-    
-    
+#приводим в порядок структуру файла
 
-  results <- building_details_collection()
+flats[ , c("number_of_rooms", "total_square", "living_square", "cost") ]  <- apply(flats[ , c("number_of_rooms", "total_square", "living_square", "cost") ], 2, as.numeric)
 
-
-
-
-
+hist(flats$cost, breaks = seq(from = 1000, to = 10000, by = 1000))

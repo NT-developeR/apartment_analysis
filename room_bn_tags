@@ -1,0 +1,11 @@
+
+css_tag; description; comment
+".results td:nth-child(3) a"; "adress"; 
+".bg2 td:nth-child(4) , .bg1 td:nth-child(4)"; "level"; 
+"td:nth-child(5) a"; "building_type"; 
+".bg1 td:nth-child(6) , .bg2 td:nth-child(6)"; "living_square"; 
+".bg1 td:nth-child(8) , .bg2 td:nth-child(8)";  "neighbors"; 
+"td:nth-child(10)";  "WC";  
+".results b"; "price"; 
+"td:nth-child(12)"; "sailer";
+"td:nth-child(14)"; "additional info"; 
